@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/badminton-booking-app/static/css/main.cf890fdb.css",
+    "main.js": "/badminton-booking-app/static/js/main.f9455196.js",
+    "static/js/453.f8d446aa.chunk.js": "/badminton-booking-app/static/js/453.f8d446aa.chunk.js",
+    "index.html": "/badminton-booking-app/index.html",
+    "main.cf890fdb.css.map": "/badminton-booking-app/static/css/main.cf890fdb.css.map",
+    "main.f9455196.js.map": "/badminton-booking-app/static/js/main.f9455196.js.map",
+    "453.f8d446aa.chunk.js.map": "/badminton-booking-app/static/js/453.f8d446aa.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.cf890fdb.css",
+    "static/js/main.f9455196.js"
+  ]
+}
