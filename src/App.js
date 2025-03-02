@@ -603,7 +603,7 @@ const CreateSessionForm = ({ onSubmit, onCancel }) => {
               className="w-full px-3 py-2 border rounded-md"
             >
               <option value="NBC Granville">NBC Granville</option>
-              <option value="NBC Yennora">NBC Yennora</option>
+              <option value="NBC Yennora">Badminton Worx Yennora</option>
             </select>
           </div>
         </div>
