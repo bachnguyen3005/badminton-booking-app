@@ -1,4 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { 
+  collection, 
+  addDoc, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  deleteDoc,
+  query,
+  orderBy
+} from "firebase/firestore";
+import { db } from './firebase'
+import { Timestamp } from "firebase/firestore";
 
 // Main App Component
 const BadmintonBookingApp = () => {
@@ -7,131 +19,333 @@ const BadmintonBookingApp = () => {
   const [view, setView] = useState('home'); // home, createSession, bookSlot, sessionDetails
   const [currentSession, setCurrentSession] = useState(null);
 
-  // Load sessions from localStorage on component mount
+  // // Load sessions from localStorage on component mount
+  // useEffect(() => {
+  //   const savedSessions = localStorage.getItem('badmintonSessions');
+  //   if (savedSessions) {
+  //     setSessions(JSON.parse(savedSessions));
+  //   }
+  // }, []);
+
+  // // Save sessions to localStorage whenever they change
+  // useEffect(() => {
+  //   localStorage.setItem('badmintonSessions', JSON.stringify(sessions));
+  // }, [sessions]);
+
+  // Load sessions from Firestore on component mount
   useEffect(() => {
-    const savedSessions = localStorage.getItem('badmintonSessions');
-    if (savedSessions) {
-      setSessions(JSON.parse(savedSessions));
-    }
+    const fetchSessions = async () => {
+      try {
+        const sessionsCollection = collection(db, "sessions");
+        const sessionsQuery = query(sessionsCollection, orderBy("date"));
+        const snapshot = await getDocs(sessionsQuery);
+        
+        const sessionsList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        setSessions(sessionsList);
+      } catch (error) {
+        console.error("Error fetching sessions:", error);
+      }
+    };
+
+    fetchSessions();
   }, []);
 
-  // Save sessions to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('badmintonSessions', JSON.stringify(sessions));
-  }, [sessions]);
+    // // Handle creating a new session
+  // const handleCreateSession = (sessionData) => {
+  //   const newSession = {
+  //     id: Date.now(),
+  //     ...sessionData,
+  //     slots: [],
+  //     totalAmount: 0,
+  //     isPaid: false,
+  //   };
+  //   setSessions([...sessions, newSession]);
+  //   setView('home');
+  // };
 
   // Handle creating a new session
-  const handleCreateSession = (sessionData) => {
-    const newSession = {
-      id: Date.now(),
-      ...sessionData,
-      slots: [],
-      totalAmount: 0,
-      isPaid: false,
-    };
-    setSessions([...sessions, newSession]);
-    setView('home');
+  const handleCreateSession = async (sessionData) => {
+    try {
+      const newSession = {
+        ...sessionData,
+        slots: [],
+        totalAmount: 0,
+        isPaid: false,
+      };
+      
+      const docRef = await addDoc(collection(db, "sessions"), newSession);
+      
+      setSessions([...sessions, {
+        id: docRef.id,
+        ...newSession
+      }]);
+      
+      setView('home');
+    } catch (error) {
+      console.error("Error creating session:", error);
+      alert("Failed to create session. Please try again.");
+    }
   };
 
-  // Handle booking a slot in a session
-  const handleBookSlot = (sessionId, slotData) => {
-    setSessions(sessions.map(session => {
-      if (session.id === sessionId) {
-        return {
-          ...session,
-          slots: [...session.slots, { ...slotData, id: Date.now() }]
-        };
-      }
-      return session;
-    }));
-    setView('sessionDetails');
-  };
+
+  // // Handle booking a slot in a session
+  // const handleBookSlot = (sessionId, slotData) => {
+  //   setSessions(sessions.map(session => {
+  //     if (session.id === sessionId) {
+  //       return {
+  //         ...session,
+  //         slots: [...session.slots, { ...slotData, id: Date.now() }]
+  //       };
+  //     }
+  //     return session;
+  //   }));
+  //   setView('sessionDetails');
+  // };
   
-  const handleCancelBooking = (sessionId, slotId) => {
-    if (window.confirm("Are you sure you want to cancel this booking?")) {
-      // Get the player name for the confirmation message
-      const sessionToUpdate = sessions.find(session => session.id === sessionId);
-      const slotToCancel = sessionToUpdate?.slots.find(slot => slot.id === slotId);
-      const playerName = slotToCancel?.playerName || 'Player';
+  // Handle booking a slot in a session
+  const handleBookSlot = async (sessionId, slotData) => {
+    try {
+      const sessionRef = doc(db, "sessions", sessionId);
+      const sessionToUpdate = sessions.find(s => s.id === sessionId);
       
-      // Update sessions state
-      const updatedSessions = sessions.map(session => {
-        if (session.id === sessionId) {
-          // Create updated session with filtered slots
-          const updatedSession = {
-            ...session,
-            slots: session.slots.filter(slot => slot.id !== slotId)
-          };
-          return updatedSession;
-        }
-        return session;
+      if (!sessionToUpdate) return;
+      
+      const updatedSlots = [...sessionToUpdate.slots, { ...slotData, id: Date.now() }];
+      
+      await updateDoc(sessionRef, {
+        slots: updatedSlots
       });
       
-      // Update the sessions state
-      setSessions(updatedSessions);
+      setSessions(sessions.map(session => {
+        if (session.id === sessionId) {
+          return {
+            ...session,
+            slots: updatedSlots
+          };
+        }
+        return session;
+      }));
       
-      // Also update currentSession if it's the one being modified
-      if (currentSession && currentSession.id === sessionId) {
-        const updatedCurrentSession = updatedSessions.find(session => session.id === sessionId);
-        setCurrentSession(updatedCurrentSession);
-      }
-      
-      // Show confirmation message
-      alert(`Booking for ${playerName} has been cancelled successfully.`);
-    }
-  };
-  
-  // Handle deleting a session
-  const handleDeleteSession = (sessionId) => {
-    if (window.confirm("Are you sure you want to delete this session? This action cannot be undone.")) {
-      setSessions(sessions.filter(session => session.id !== sessionId));
-      setView('home');
+      setView('sessionDetails');
+    } catch (error) {
+      console.error("Error booking slot:", error);
+      alert("Failed to book slot. Please try again.");
     }
   };
 
+  // const handleCancelBooking = (sessionId, slotId) => {
+  //   if (window.confirm("Are you sure you want to cancel this booking?")) {
+  //     // Get the player name for the confirmation message
+  //     const sessionToUpdate = sessions.find(session => session.id === sessionId);
+  //     const slotToCancel = sessionToUpdate?.slots.find(slot => slot.id === slotId);
+  //     const playerName = slotToCancel?.playerName || 'Player';
+      
+  //     // Update sessions state
+  //     const updatedSessions = sessions.map(session => {
+  //       if (session.id === sessionId) {
+  //         // Create updated session with filtered slots
+  //         const updatedSession = {
+  //           ...session,
+  //           slots: session.slots.filter(slot => slot.id !== slotId)
+  //         };
+  //         return updatedSession;
+  //       }
+  //       return session;
+  //     });
+      
+  //     // Update the sessions state
+  //     setSessions(updatedSessions);
+      
+  //     // Also update currentSession if it's the one being modified
+  //     if (currentSession && currentSession.id === sessionId) {
+  //       const updatedCurrentSession = updatedSessions.find(session => session.id === sessionId);
+  //       setCurrentSession(updatedCurrentSession);
+  //     }
+      
+  //     // Show confirmation message
+  //     alert(`Booking for ${playerName} has been cancelled successfully.`);
+  //   }
+  // };
+  
+  // Handle cancelling a booking
+  const handleCancelBooking = async (sessionId, slotId) => {
+    if (window.confirm("Are you sure you want to cancel this booking?")) {
+      try {
+        const sessionToUpdate = sessions.find(session => session.id === sessionId);
+        const slotToCancel = sessionToUpdate?.slots.find(slot => slot.id === slotId);
+        const playerName = slotToCancel?.playerName || 'Player';
+        
+        // Update Firestore
+        const sessionRef = doc(db, "sessions", sessionId);
+        const updatedSlots = sessionToUpdate.slots.filter(slot => slot.id !== slotId);
+        
+        await updateDoc(sessionRef, {
+          slots: updatedSlots
+        });
+        
+        // Update local state
+        const updatedSessions = sessions.map(session => {
+          if (session.id === sessionId) {
+            return {
+              ...session,
+              slots: updatedSlots
+            };
+          }
+          return session;
+        });
+        
+        setSessions(updatedSessions);
+        
+        // Update currentSession if it's the one being modified
+        if (currentSession && currentSession.id === sessionId) {
+          const updatedCurrentSession = updatedSessions.find(s => s.id === sessionId);
+          setCurrentSession(updatedCurrentSession);
+        }
+        
+        alert(`Booking for ${playerName} has been cancelled successfully.`);
+      } catch (error) {
+        console.error("Error cancelling booking:", error);
+        alert("Failed to cancel booking. Please try again.");
+      }
+    }
+  };
+
+  // // Handle deleting a session
+  // const handleDeleteSession = (sessionId) => {
+  //   if (window.confirm("Are you sure you want to delete this session? This action cannot be undone.")) {
+  //     setSessions(sessions.filter(session => session.id !== sessionId));
+  //     setView('home');
+  //   }
+  // };
+
+  // Handle deleting a session
+  const handleDeleteSession = async (sessionId) => {
+    if (window.confirm("Are you sure you want to delete this session? This action cannot be undone.")) {
+      try {
+        // Delete from Firestore
+        await deleteDoc(doc(db, "sessions", sessionId));
+        
+        // Update local state
+        setSessions(sessions.filter(session => session.id !== sessionId));
+        setView('home');
+      } catch (error) {
+        console.error("Error deleting session:", error);
+        alert("Failed to delete session. Please try again.");
+      }
+    }
+  };
+
+  // // Handle finalizing a session with payment info
+  // const handleFinalizeSession = (sessionId, totalAmount, individualCosts = null) => {
+  //   setSessions(sessions.map(session => {
+  //     if (session.id === sessionId) {
+  //       // If individual costs are provided, use them
+  //       if (individualCosts) {
+  //         const totalSlots = session.slots.length;
+  //         const costPerPerson = totalSlots > 0 ? 
+  //           Object.values(individualCosts).reduce((sum, cost) => sum + cost, 0) / totalSlots : 0;
+          
+  //         return {
+  //           ...session,
+  //           totalAmount,
+  //           individualCosts,
+  //           costPerPerson,
+  //           isPaid: true
+  //         };
+  //       } else {
+  //         // Otherwise calculate even split
+  //         const costPerPerson = session.slots.length > 0 
+  //           ? totalAmount / session.slots.length 
+  //           : 0;
+          
+  //         // Create individual costs object with even distribution
+  //         const costs = {};
+  //         session.slots.forEach(slot => {
+  //           costs[slot.id] = costPerPerson;
+  //         });
+          
+  //         return {
+  //           ...session,
+  //           totalAmount,
+  //           individualCosts: costs,
+  //           costPerPerson,
+  //           isPaid: true
+  //         };
+  //       }
+  //     }
+  //     return session;
+  //   }));
+    
+  //   // Send notification emails (simulated in this version)
+  //   console.log("Payment notification emails would be sent here");
+  // };
+
   // Handle finalizing a session with payment info
-  const handleFinalizeSession = (sessionId, totalAmount, individualCosts = null) => {
-    setSessions(sessions.map(session => {
-      if (session.id === sessionId) {
-        // If individual costs are provided, use them
-        if (individualCosts) {
-          const totalSlots = session.slots.length;
-          const costPerPerson = totalSlots > 0 ? 
-            Object.values(individualCosts).reduce((sum, cost) => sum + cost, 0) / totalSlots : 0;
-          
+  const handleFinalizeSession = async (sessionId, totalAmount, individualCosts = null) => {
+    try {
+      const sessionToUpdate = sessions.find(s => s.id === sessionId);
+      
+      if (!sessionToUpdate) return;
+      
+      // Prepare update data
+      let updateData = {};
+      
+      if (individualCosts) {
+        const totalSlots = sessionToUpdate.slots.length;
+        const costPerPerson = totalSlots > 0 ? 
+          Object.values(individualCosts).reduce((sum, cost) => sum + cost, 0) / totalSlots : 0;
+        
+        updateData = {
+          totalAmount,
+          individualCosts,
+          costPerPerson,
+          isPaid: true
+        };
+      } else {
+        // Calculate even split
+        const costPerPerson = sessionToUpdate.slots.length > 0 
+          ? totalAmount / sessionToUpdate.slots.length 
+          : 0;
+        
+        // Create individual costs object with even distribution
+        const costs = {};
+        sessionToUpdate.slots.forEach(slot => {
+          costs[slot.id] = costPerPerson;
+        });
+        
+        updateData = {
+          totalAmount,
+          individualCosts: costs,
+          costPerPerson,
+          isPaid: true
+        };
+      }
+      
+      // Update in Firestore
+      const sessionRef = doc(db, "sessions", sessionId);
+      await updateDoc(sessionRef, updateData);
+      
+      // Update local state
+      setSessions(sessions.map(session => {
+        if (session.id === sessionId) {
           return {
             ...session,
-            totalAmount,
-            individualCosts,
-            costPerPerson,
-            isPaid: true
-          };
-        } else {
-          // Otherwise calculate even split
-          const costPerPerson = session.slots.length > 0 
-            ? totalAmount / session.slots.length 
-            : 0;
-          
-          // Create individual costs object with even distribution
-          const costs = {};
-          session.slots.forEach(slot => {
-            costs[slot.id] = costPerPerson;
-          });
-          
-          return {
-            ...session,
-            totalAmount,
-            individualCosts: costs,
-            costPerPerson,
-            isPaid: true
+            ...updateData
           };
         }
-      }
-      return session;
-    }));
-    
-    // Send notification emails (simulated in this version)
-    console.log("Payment notification emails would be sent here");
+        return session;
+      }));
+      
+      // Log notification (in a real app, you would send emails here)
+      console.log("Payment notification emails would be sent here");
+    } catch (error) {
+      console.error("Error finalizing session:", error);
+      alert("Failed to finalize session. Please try again.");
+    }
   };
 
   // Render the appropriate view
@@ -170,16 +384,16 @@ const BadmintonBookingApp = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
-        <header className="bg-blue-600 text-white p-4">
-          <h1 className="text-2xl font-bold">Badminton Booking App</h1>
-        </header>
-        <main className="p-4">
-          {renderView()}
-        </main>
-      </div>
+  <div className="min-h-screen bg-gray-100 p-2 sm:p-4">
+    <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
+      <header className="bg-blue-600 text-white p-3 sm:p-4">
+        <h1 className="text-xl sm:text-2xl font-bold">Badminton Booking</h1>
+      </header>
+      <main className="p-3 sm:p-4">
+        {renderView()}
+      </main>
     </div>
+  </div>
   );
 };
 
@@ -452,17 +666,17 @@ const CreateSessionForm = ({ onSubmit, onCancel }) => {
           </div>
         </div>
         
-        <div className="flex justify-end space-x-2 mt-6">
+        <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2 mt-6">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 border rounded-md text-gray-700 hover:bg-gray-100"
+            className="w-full sm:w-auto px-4 py-2 border rounded-md text-gray-700 hover:bg-gray-100"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
             Create Session
           </button>
@@ -959,5 +1173,6 @@ const SessionDetails = ({ session, onFinalize, onBack, onCancelBooking, onDelete
     </div>
   );
 };
+
 
 export default BadmintonBookingApp;
