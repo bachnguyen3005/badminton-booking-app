@@ -19,18 +19,9 @@ const BadmintonBookingApp = () => {
   const [view, setView] = useState('home'); // home, createSession, bookSlot, sessionDetails
   const [currentSession, setCurrentSession] = useState(null);
 
-  // // Load sessions from localStorage on component mount
-  // useEffect(() => {
-  //   const savedSessions = localStorage.getItem('badmintonSessions');
-  //   if (savedSessions) {
-  //     setSessions(JSON.parse(savedSessions));
-  //   }
-  // }, []);
-
-  // // Save sessions to localStorage whenever they change
-  // useEffect(() => {
-  //   localStorage.setItem('badmintonSessions', JSON.stringify(sessions));
-  // }, [sessions]);
+  //New admin state
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [shareableLink, setShareableLink] = useState('');
 
   // Load sessions from Firestore on component mount
   useEffect(() => {
@@ -52,20 +43,17 @@ const BadmintonBookingApp = () => {
     };
 
     fetchSessions();
-  }, []);
-
-    // // Handle creating a new session
-  // const handleCreateSession = (sessionData) => {
-  //   const newSession = {
-  //     id: Date.now(),
-  //     ...sessionData,
-  //     slots: [],
-  //     totalAmount: 0,
-  //     isPaid: false,
-  //   };
-  //   setSessions([...sessions, newSession]);
-  //   setView('home');
-  // };
+    // Check URL for session parameter
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session');
+    if (sessionId) {
+      const session = sessions.find(s => s.id === sessionId);
+      if (session) {
+        setCurrentSession(session);
+        setView('bookSlot');
+      }
+    }
+  }, [sessions]);
 
   // Handle creating a new session
   const handleCreateSession = async (sessionData) => {
@@ -78,35 +66,25 @@ const BadmintonBookingApp = () => {
       };
       
       const docRef = await addDoc(collection(db, "sessions"), newSession);
-      
-      setSessions([...sessions, {
-        id: docRef.id,
+      const sessionId = docRef.id;
+
+      const newSessionWithId = {
+        id: sessionId,
         ...newSession
-      }]);
+      };
       
-      setView('home');
+      setSessions([...sessions, newSessionWithId]);
+      
+      // Generate shareable link
+      generateShareableLink(sessionId);
+
+      setView('shareLink');
     } catch (error) {
       console.error("Error creating session:", error);
       alert("Failed to create session. Please try again.");
     }
   };
-
-
-  // // Handle booking a slot in a session
-  // const handleBookSlot = (sessionId, slotData) => {
-  //   setSessions(sessions.map(session => {
-  //     if (session.id === sessionId) {
-  //       return {
-  //         ...session,
-  //         slots: [...session.slots, { ...slotData, id: Date.now() }]
-  //       };
-  //     }
-  //     return session;
-  //   }));
-  //   setView('sessionDetails');
-  // };
   
-  // Handle booking a slot in a session
   const handleBookSlot = async (sessionId, slotData) => {
     try {
       const sessionRef = doc(db, "sessions", sessionId);
@@ -130,46 +108,25 @@ const BadmintonBookingApp = () => {
         return session;
       }));
       
-      setView('sessionDetails');
+      // Update currentSession if we're booking through the form
+      if (currentSession && currentSession.id === sessionId) {
+        setCurrentSession({
+          ...currentSession,
+          slots: updatedSlots
+        });
+      }
+      
+      // Don't change view when booking from the form to allow multiple bookings
+      // and to show the success message
+      // Only change view when coming from other components
+      if (view !== 'bookSlot') {
+        setView('sessionDetails');
+      }
     } catch (error) {
       console.error("Error booking slot:", error);
       alert("Failed to book slot. Please try again.");
     }
   };
-
-  // const handleCancelBooking = (sessionId, slotId) => {
-  //   if (window.confirm("Are you sure you want to cancel this booking?")) {
-  //     // Get the player name for the confirmation message
-  //     const sessionToUpdate = sessions.find(session => session.id === sessionId);
-  //     const slotToCancel = sessionToUpdate?.slots.find(slot => slot.id === slotId);
-  //     const playerName = slotToCancel?.playerName || 'Player';
-      
-  //     // Update sessions state
-  //     const updatedSessions = sessions.map(session => {
-  //       if (session.id === sessionId) {
-  //         // Create updated session with filtered slots
-  //         const updatedSession = {
-  //           ...session,
-  //           slots: session.slots.filter(slot => slot.id !== slotId)
-  //         };
-  //         return updatedSession;
-  //       }
-  //       return session;
-  //     });
-      
-  //     // Update the sessions state
-  //     setSessions(updatedSessions);
-      
-  //     // Also update currentSession if it's the one being modified
-  //     if (currentSession && currentSession.id === sessionId) {
-  //       const updatedCurrentSession = updatedSessions.find(session => session.id === sessionId);
-  //       setCurrentSession(updatedCurrentSession);
-  //     }
-      
-  //     // Show confirmation message
-  //     alert(`Booking for ${playerName} has been cancelled successfully.`);
-  //   }
-  // };
   
   // Handle cancelling a booking
   const handleCancelBooking = async (sessionId, slotId) => {
@@ -214,14 +171,6 @@ const BadmintonBookingApp = () => {
     }
   };
 
-  // // Handle deleting a session
-  // const handleDeleteSession = (sessionId) => {
-  //   if (window.confirm("Are you sure you want to delete this session? This action cannot be undone.")) {
-  //     setSessions(sessions.filter(session => session.id !== sessionId));
-  //     setView('home');
-  //   }
-  // };
-
   // Handle deleting a session
   const handleDeleteSession = async (sessionId) => {
     if (window.confirm("Are you sure you want to delete this session? This action cannot be undone.")) {
@@ -238,51 +187,6 @@ const BadmintonBookingApp = () => {
       }
     }
   };
-
-  // // Handle finalizing a session with payment info
-  // const handleFinalizeSession = (sessionId, totalAmount, individualCosts = null) => {
-  //   setSessions(sessions.map(session => {
-  //     if (session.id === sessionId) {
-  //       // If individual costs are provided, use them
-  //       if (individualCosts) {
-  //         const totalSlots = session.slots.length;
-  //         const costPerPerson = totalSlots > 0 ? 
-  //           Object.values(individualCosts).reduce((sum, cost) => sum + cost, 0) / totalSlots : 0;
-          
-  //         return {
-  //           ...session,
-  //           totalAmount,
-  //           individualCosts,
-  //           costPerPerson,
-  //           isPaid: true
-  //         };
-  //       } else {
-  //         // Otherwise calculate even split
-  //         const costPerPerson = session.slots.length > 0 
-  //           ? totalAmount / session.slots.length 
-  //           : 0;
-          
-  //         // Create individual costs object with even distribution
-  //         const costs = {};
-  //         session.slots.forEach(slot => {
-  //           costs[slot.id] = costPerPerson;
-  //         });
-          
-  //         return {
-  //           ...session,
-  //           totalAmount,
-  //           individualCosts: costs,
-  //           costPerPerson,
-  //           isPaid: true
-  //         };
-  //       }
-  //     }
-  //     return session;
-  //   }));
-    
-  //   // Send notification emails (simulated in this version)
-  //   console.log("Payment notification emails would be sent here");
-  // };
 
   // Handle finalizing a session with payment info
   const handleFinalizeSession = async (sessionId, totalAmount, individualCosts = null) => {
@@ -349,6 +253,7 @@ const BadmintonBookingApp = () => {
   };
 
   // Render the appropriate view
+  // Modify the existing renderView to include admin-specific views
   const renderView = () => {
     switch (view) {
       case 'createSession':
@@ -357,19 +262,42 @@ const BadmintonBookingApp = () => {
         return <BookSlotForm 
           session={currentSession} 
           onSubmit={(slotData) => handleBookSlot(currentSession.id, slotData)} 
-          onCancel={() => setView('home')} 
+          onCancel={() => setView('home')}
+          isAdmin={isAdmin}
         />;
       case 'sessionDetails':
         return <SessionDetails 
-          session={currentSession} 
+          session={currentSession}
+          isAdmin={isAdmin}
           onFinalize={(amount, individualCosts) => handleFinalizeSession(currentSession.id, amount, individualCosts)}
           onBack={() => setView('home')}
           onCancelBooking={(slotId) => handleCancelBooking(currentSession.id, slotId)}
+          onAddPlayer={(playerData) => handleBookSlot(currentSession.id, playerData)}
           onDeleteSession={() => handleDeleteSession(currentSession.id)}
+          onGenerateLink={() => generateShareableLink(currentSession.id)}
+          onCopyLink={copyLinkToClipboard}
+          shareableLink={shareableLink}
+        />;
+      case 'shareLink':
+        return <ShareLinkView 
+          link={shareableLink} 
+          onCopy={copyLinkToClipboard} 
+          onDone={() => setView('home')} 
+        />;
+      case 'manageOldSessions':
+        return <ManageOldSessions 
+          sessions={sessions.filter(session => new Date(session.date) < new Date())}
+          onDeleteSession={handleDeleteSession}
+          onViewDetails={(session) => {
+            setCurrentSession(session);
+            setView('sessionDetails');
+          }}
+          onBack={() => setView('home')}
         />;
       default:
         return <HomePage 
           sessions={sessions} 
+          isAdmin={isAdmin}
           onCreateNew={() => setView('createSession')} 
           onSelectSession={(session) => {
             setCurrentSession(session);
@@ -379,44 +307,108 @@ const BadmintonBookingApp = () => {
             setCurrentSession(session);
             setView('sessionDetails');
           }}
+          onManageOldSessions={() => setView('manageOldSessions')}
         />;
     }
   };
 
+  // Add a function to toggle admin mode with password
+  const toggleAdminMode = () => {
+    if (!isAdmin) {
+      // Prompt for password when entering admin mode
+      const password = prompt("Please enter admin password:");
+      if (password === "admin") {
+        setIsAdmin(true);
+      } else {
+        alert("Incorrect password. Access denied.");
+      }
+    } else {
+      // No password needed to exit admin mode
+      setIsAdmin(false);
+    }
+  };
+
+  // Add function to generate shareable link
+  const generateShareableLink = (sessionId) => {
+    const baseUrl = window.location.origin;
+    const link = `${baseUrl}?session=${sessionId}`;
+    setShareableLink(link);
+    return link;
+  };
+
+  // Function to copy link to clipboard
+  const copyLinkToClipboard = () => {
+    navigator.clipboard.writeText(shareableLink)
+      .then(() => {
+        alert('Link copied to clipboard!');
+      })
+      .catch(err => {
+        console.error('Failed to copy link: ', err);
+      });
+  };
+   
   return (
-  <div className="min-h-screen bg-gray-100 p-2 sm:p-4">
-    <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
-      <header className="bg-blue-600 text-white p-3 sm:p-4">
-        <h1 className="text-xl sm:text-2xl font-bold">Badminton Booking</h1>
-      </header>
-      <main className="p-3 sm:p-4">
-        {renderView()}
-      </main>
+    <div className={`min-h-screen p-2 sm:p-4 ${isAdmin ? 'bg-amber-50' : 'bg-blue-50'}`}>
+      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
+        <header className={`${isAdmin ? 'bg-amber-600' : 'bg-blue-600'} text-white p-3 sm:p-4 flex justify-between items-center transition-colors duration-300`}>
+          <h1 className="text-xl sm:text-2xl font-bold">Badminton Booking</h1>
+          <div className="flex items-center space-x-2">
+            <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+              isAdmin 
+                ? 'bg-yellow-300 text-yellow-800 border border-yellow-400' 
+                : 'bg-blue-300 text-blue-800 border border-blue-400'
+            }`}>
+              {isAdmin ? 'Admin Mode' : 'User Mode'}
+            </span>
+            <button 
+              onClick={toggleAdminMode}
+              className={`px-3 py-1 text-sm rounded ${
+                isAdmin 
+                  ? 'bg-amber-500 hover:bg-amber-700' 
+                  : 'bg-blue-500 hover:bg-blue-700'
+              } text-white transition-colors duration-300`}
+            >
+              {isAdmin ? 'Exit Admin' : 'Admin'}
+            </button>
+          </div>
+        </header>
+        <main className="p-3 sm:p-4">
+          {renderView()}
+        </main>
+      </div>
     </div>
-  </div>
   );
 };
 
 // Home Page Component
-const HomePage = ({ sessions, onCreateNew, onSelectSession, onViewDetails }) => {
-  const upcomingSessions = sessions.filter(session => new Date(session.date) >= new Date());
+const HomePage = ({ sessions, isAdmin, onCreateNew, onSelectSession, onViewDetails, onManageOldSessions }) => {
+  // const upcomingSessions = sessions.filter(session => new Date(session.date) >= new Date());
   
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold">Badminton Sessions</h2>
-        <button 
-          onClick={onCreateNew}
-          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded"
-        >
-          Create New Session
-        </button>
+          {isAdmin && (
+            <div className="space-x-2">
+              <button 
+                onClick={onCreateNew}
+                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded"
+              >
+                Create New Session
+              </button>
+              <button 
+                onClick={onManageOldSessions}
+                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded"
+              >
+                Manage Old Sessions
+              </button>
+            </div>
+          )}
       </div>
       
-      {upcomingSessions.length > 0 ? (
+      {sessions.length > 0 ? (
         <div className="space-y-4">
-          <h3 className="font-medium text-lg">Upcoming Sessions</h3>
-          {upcomingSessions.map(session => (
+          {sessions.map(session => (
             <div key={session.id} className="border rounded p-4 bg-gray-50">
               <div className="flex justify-between items-center">
                 <div>
@@ -424,6 +416,17 @@ const HomePage = ({ sessions, onCreateNew, onSelectSession, onViewDetails }) => 
                   <p>{session.startTime} - {session.endTime}</p>
                   <p>{session.courts} courts • {session.slots.length}/{session.maxSlots} slots filled</p>
                   <p className="text-gray-600">{session.location || "NBC Granville"}</p>
+                  
+                  {/* Add status badge - Paid or Unpaid */}
+                  <span 
+                    className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
+                      session.isPaid 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}
+                  >
+                    {session.isPaid ? 'Paid' : 'Unpaid'}
+                  </span>
                 </div>
                 <div className="space-x-2">
                   <button 
@@ -449,35 +452,7 @@ const HomePage = ({ sessions, onCreateNew, onSelectSession, onViewDetails }) => 
           ))}
         </div>
       ) : (
-        <p className="text-gray-500 text-center py-8">No upcoming sessions. Create one to get started!</p>
-      )}
-      
-      {sessions.length > upcomingSessions.length && (
-        <div className="mt-8 space-y-4">
-          <h3 className="font-medium text-lg">Past Sessions</h3>
-          {sessions
-            .filter(session => new Date(session.date) < new Date())
-            .map(session => (
-              <div key={session.id} className="border rounded p-4 bg-gray-50 opacity-75">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="font-bold">{new Date(session.date).toLocaleDateString()}</p>
-                    <p>{session.startTime} - {session.endTime}</p>
-                    <p>{session.courts} courts • {session.slots.length}/{session.maxSlots} slots filled</p>
-                    {session.isPaid && session.costPerPerson && (
-                      <p className="text-green-600">Paid • ${session.costPerPerson.toFixed(2)}/person</p>
-                    )}
-                  </div>
-                  <button 
-                    onClick={() => onViewDetails(session)}
-                    className="px-3 py-1 rounded bg-gray-500 hover:bg-gray-600 text-white"
-                  >
-                    Details
-                  </button>
-                </div>
-              </div>
-          ))}
-        </div>
+        <p className="text-gray-500 text-center py-8">No sessions found. Create one to get started!</p>
       )}
     </div>
   );
@@ -687,13 +662,15 @@ const CreateSessionForm = ({ onSubmit, onCancel }) => {
 };
 
 // Book Slot Form Component
-const BookSlotForm = ({ session, onSubmit, onCancel }) => {
+const BookSlotForm = ({ session, onSubmit, onCancel, isAdmin }) => {
   const [formData, setFormData] = useState({
     playerName: '',
     email: '',
     startTime: session.startTime,
     endTime: session.endTime,
   });
+  
+  const [bookingSuccess, setBookingSuccess] = useState(false);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -706,6 +683,20 @@ const BookSlotForm = ({ session, onSubmit, onCancel }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     onSubmit(formData);
+    setBookingSuccess(true);
+    
+    // Reset success message after 5 seconds
+    setTimeout(() => {
+      setBookingSuccess(false);
+    }, 5000);
+    
+    // Reset form
+    setFormData({
+      playerName: '',
+      email: '',
+      startTime: session.startTime,
+      endTime: session.endTime,
+    });
   };
 
   const slotsRemaining = session.maxSlots - session.slots.length;
@@ -713,6 +704,15 @@ const BookSlotForm = ({ session, onSubmit, onCancel }) => {
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4">Book a Slot</h2>
+      
+      {bookingSuccess && (
+        <div className="mb-4 p-3 bg-green-100 text-green-800 rounded-md flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          Booking successful! Your slot has been reserved.
+        </div>
+      )}
       
       <div className="mb-6 bg-blue-50 p-4 rounded-md">
         <p className="font-medium">Session Details:</p>
@@ -725,8 +725,29 @@ const BookSlotForm = ({ session, onSubmit, onCancel }) => {
         </p>
       </div>
       
+      {/* Display current players list */}
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-medium">Current Players:</h3>
+          {isAdmin && <span className="text-xs bg-amber-200 text-amber-800 px-2 py-1 rounded-full">Admin View</span>}
+        </div>
+        {session.slots.length > 0 ? (
+          <ul className="bg-gray-50 rounded-md p-3 border">
+            {session.slots.map((slot, index) => (
+              <li key={slot.id} className="py-1 border-b last:border-b-0">
+                {index + 1}. {slot.playerName} ({slot.startTime} - {slot.endTime})
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-gray-500 text-center py-2 bg-gray-50 rounded-md">
+            No players have booked slots yet. Be the first!
+          </p>
+        )}
+      </div>
+      
       {slotsRemaining > 0 ? (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className={`space-y-4 ${isAdmin ? 'border border-amber-300 p-4 rounded-md bg-amber-50' : ''}`}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
             <input
@@ -814,13 +835,16 @@ const BookSlotForm = ({ session, onSubmit, onCancel }) => {
 };
 
 // Session Details Component
-const SessionDetails = ({ session, onFinalize, onBack, onCancelBooking, onDeleteSession }) => {
+const SessionDetails = ({ session, isAdmin, onFinalize, onBack, onCancelBooking, onAddPlayer, onDeleteSession, onGenerateLink, onCopyLink, shareableLink }) => {
   const [totalAmount, setTotalAmount] = useState(session.totalAmount || '');
   const [isEditing, setIsEditing] = useState(!session.isPaid);
   const [individualCosts, setIndividualCosts] = useState({});
   const [useEvenSplit, setUseEvenSplit] = useState(true);
   const [showEmailSent, setShowEmailSent] = useState(false);
   const [costsMatchTotal, setCostsMatchTotal] = useState(true);
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerEmail, setNewPlayerEmail] = useState('');
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
   
   // Initialize individual costs
   useEffect(() => {
@@ -883,6 +907,29 @@ const SessionDetails = ({ session, onFinalize, onBack, onCancelBooking, onDelete
     }, 5000);
   };
   
+  // Add a function to add a player manually (for admin)
+  const handleAddPlayer = () => {
+    if (!newPlayerName) {
+      alert("Player name is required");
+      return;
+    }
+    
+    const newPlayer = {
+      id: Date.now(),
+      playerName: newPlayerName,
+      email: newPlayerEmail,
+      startTime: session.startTime,
+      endTime: session.endTime
+    };
+    
+    // Instead of calling onSubmit, we should call handleBookSlot
+    onAddPlayer(newPlayer);
+    setNewPlayerName('');
+    setNewPlayerEmail('');
+    setShowAddPlayer(false);
+  };
+  
+
   const totalIndividualCost = Object.values(individualCosts).reduce((sum, cost) => sum + (parseFloat(cost) || 0), 0);
   
   const costPerPerson = session.isPaid 
@@ -896,7 +943,7 @@ const SessionDetails = ({ session, onFinalize, onBack, onCancelBooking, onDelete
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold">Session Details</h2>
         <div className="flex space-x-2">
-          {!session.isPaid && (
+          {isAdmin && !session.isPaid && (
             <button 
               onClick={onDeleteSession}
               className="px-3 py-1 rounded bg-red-500 hover:bg-red-600 text-white"
@@ -925,8 +972,80 @@ const SessionDetails = ({ session, onFinalize, onBack, onCancelBooking, onDelete
       </div>
       
       <div className="mb-6">
-        <h3 className="text-lg font-medium mb-2">Players</h3>
-        {session.slots.length > 0 ? (
+        <button
+          onClick={onGenerateLink}
+          className="px-3 py-1 mb-2 rounded bg-blue-500 hover:bg-blue-600 text-white"
+        >
+          Generate Shareable Link
+        </button>
+        {shareableLink && (
+          <div className="flex items-center bg-gray-50 p-2 rounded border">
+            <input
+              type="text"
+              readOnly
+              value={shareableLink}
+              className="flex-grow p-2 bg-transparent border-none focus:outline-none"
+            />
+            <button
+              onClick={onCopyLink}
+              className="ml-2 px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded"
+            >
+              Copy
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-6">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-lg font-medium">Players</h3>
+            {isAdmin && !session.isPaid && (
+              <button
+                onClick={() => setShowAddPlayer(!showAddPlayer)}
+                className="px-3 py-1 text-sm rounded bg-green-500 hover:bg-green-600 text-white"
+              >
+                Add Player
+              </button>
+            )}
+          </div>
+          
+          {showAddPlayer && (
+            <div className="mb-4 bg-gray-50 p-3 rounded border">
+              <h4 className="font-medium mb-2">Add New Player</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <input
+                  type="text"
+                  placeholder="Player Name"
+                  value={newPlayerName}
+                  onChange={(e) => setNewPlayerName(e.target.value)}
+                  className="px-3 py-2 border rounded"
+                />
+                <input
+                  type="email"
+                  placeholder="Player Email (optional)"
+                  value={newPlayerEmail}
+                  onChange={(e) => setNewPlayerEmail(e.target.value)}
+                  className="px-3 py-2 border rounded"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => setShowAddPlayer(false)}
+                  className="px-3 py-1 text-sm rounded bg-gray-300 hover:bg-gray-400 text-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddPlayer}
+                  className="px-3 py-1 text-sm rounded bg-green-500 hover:bg-green-600 text-white"
+                >
+                  Add Player
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {session.slots.length > 0 ? (
           <div className="border rounded overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -963,7 +1082,7 @@ const SessionDetails = ({ session, onFinalize, onBack, onCancelBooking, onDelete
       {session.slots.length > 0 && (
         <div className="mb-6">
           <h3 className="text-lg font-medium mb-2">Payment Information</h3>
-          {isEditing ? (
+          {isEditing && isAdmin ?(
             <form onSubmit={handleSubmit} className="space-y-4 bg-gray-50 p-4 rounded">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Total Court Fee Amount</label>
@@ -1168,11 +1287,108 @@ const SessionDetails = ({ session, onFinalize, onBack, onCancelBooking, onDelete
             </div>
           )}
         
+          {/* Only show this button for admins if the session is not yet paid */}
+          {isAdmin && !session.isPaid && !isEditing && (
+              <div className="mt-4">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
+                  Finalize Payment
+                </button>
+              </div>
+          )}
         </div>
       )}
     </div>
   );
 };
+
+// Create a new component for sharing the session link
+const ShareLinkView = ({ link, onCopy, onDone }) => {
+  return (
+    <div className="text-center py-8">
+      <h2 className="text-xl font-semibold mb-6">Session Created Successfully!</h2>
+      
+      <p className="mb-4">Share this link with players to allow them to book slots:</p>
+      
+      <div className="flex items-center mb-6 bg-gray-50 p-2 rounded border max-w-lg mx-auto">
+        <input
+          type="text"
+          readOnly
+          value={link}
+          className="flex-grow p-2 bg-transparent border-none focus:outline-none"
+        />
+        <button
+          onClick={onCopy}
+          className="ml-2 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded"
+        >
+          Copy Link
+        </button>
+      </div>
+      
+      <button
+        onClick={onDone}
+        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+      >
+        Done
+      </button>
+    </div>
+  );
+};
+
+// Create a component for managing old sessions
+const ManageOldSessions = ({ sessions, onDeleteSession, onViewDetails, onBack }) => {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold">Manage Old Sessions</h2>
+        <button
+          onClick={onBack}
+          className="px-3 py-1 rounded bg-gray-500 hover:bg-gray-600 text-white"
+        >
+          Back
+        </button>
+      </div>
+      
+      {sessions.length > 0 ? (
+        <div className="space-y-4">
+          {sessions.map(session => (
+            <div key={session.id} className="border rounded p-4 bg-gray-50">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="font-bold">{new Date(session.date).toLocaleDateString()}</p>
+                  <p>{session.startTime} - {session.endTime}</p>
+                  <p>{session.courts} courts • {session.slots.length}/{session.maxSlots} slots filled</p>
+                  {session.isPaid && session.costPerPerson && (
+                    <p className="text-green-600">Paid • ${session.costPerPerson.toFixed(2)}/person</p>
+                  )}
+                </div>
+                <div className="space-x-2">
+                  <button 
+                    onClick={() => onViewDetails(session)}
+                    className="px-3 py-1 rounded bg-purple-500 hover:bg-purple-600 text-white"
+                  >
+                    Details
+                  </button>
+                  <button 
+                    onClick={() => onDeleteSession(session.id)}
+                    className="px-3 py-1 rounded bg-red-500 hover:bg-red-600 text-white"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-gray-500 text-center py-8">No past sessions found.</p>
+      )}
+    </div>
+  );
+};
+
 
 
 export default BadmintonBookingApp;
